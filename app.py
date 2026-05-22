@@ -9,10 +9,11 @@ import asyncio
 import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
-import serpapi
+import requests as _http
+import urllib.parse as _urllib_parse
 from openai import OpenAI
 
-from amazon_scraper import scrape_amazon_page
+from amazon_scraper import AMAZON_DOMAINS
 from datetime import datetime, timedelta
 # Playwright is only available in local environments; gracefully degrade on Streamlit Cloud
 try:
@@ -22,6 +23,31 @@ except (ImportError, ModuleNotFoundError):
     PLAYWRIGHT_AVAILABLE = False
 
 load_dotenv()
+
+# ── Background FastAPI Server ─────────────────────────────────────────────────
+# app.py starts main.py's FastAPI app in a background thread so the Streamlit
+# UI can route all data-fetching through the REST API on localhost:8001.
+import threading as _threading
+_API_BASE = "http://127.0.0.1:8001"
+_fastapi_lock = _threading.Lock()
+_fastapi_started = False
+
+def _start_fastapi():
+    import uvicorn
+    from main import app as _fastapi_app
+    uvicorn.run(_fastapi_app, host="127.0.0.1", port=8001, log_level="error")
+
+def _ensure_fastapi():
+    global _fastapi_started
+    with _fastapi_lock:
+        if not _fastapi_started:
+            _fastapi_started = True
+            t = _threading.Thread(target=_start_fastapi, daemon=True)
+            t.start()
+            import time
+            time.sleep(1.0)  # Allow FastAPI time to boot
+
+_ensure_fastapi()
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -1109,8 +1135,7 @@ def render_product_card(title, price, rank, rating, reviews, link, thumbnail=Non
 
 def render_openai_card(p: dict, idx: int):
     """Render a product card for OpenAI-generated results with category image and localized shop link."""
-    import urllib.parse
-    from amazon_scraper import AMAZON_DOMAINS
+    import urllib.parse  # used for quote_plus below
     
     title = p.get("title", "Untitled")
     features = p.get("features", [])
@@ -1191,50 +1216,22 @@ with tab_search:
                         if SITE_CATEGORIES[search_category]:
                             query = f"{search_category} {query}"
 
-                        params = {
-                            "engine": "google_shopping",
-                            "q": query,
-                            "api_key": api_key,
-                            "gl": gl,
-                        }
+                        # Route through FastAPI backend
+                        encoded_query = _urllib_parse.quote(query, safe="")
+                        resp = _http.get(
+                            f"{_API_BASE}/search/{gl}/{encoded_query}",
+                            timeout=30,
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
 
-
-
-                        # Primary search: Google Shopping
-                        try:
-                            result = serpapi.search(params).as_dict()
-                            products = result.get("shopping_results", []) + result.get("immersive_products", [])
-                        except Exception as e:
-                            if "400" in str(e) or "Unsupported" in str(e):
-                                # Fallback: Google Organic Search (which supports all countries)
+                        if "error" in data:
+                            st.markdown(f'<div class="error-box">❌ {data["error"]}</div>', unsafe_allow_html=True)
+                            products = []
+                        else:
+                            if data.get("fallback_used"):
                                 st.info(f"ℹ️ Google Shopping is limited in {search_country}. Falling back to standard search...")
-                                params["engine"] = "google"
-                                result = serpapi.search(params).as_dict()
-                                # Extract products from organic results or shopping carousels
-                                products = []
-                                # 1. Check for shopping carousel in organic results
-                                if result.get("shopping_results"):
-                                    for sr in result.get("shopping_results"):
-                                        sr["rank"] = sr.get("position", "N/A")
-                                        products.append(sr)
-                                if result.get("inline_products"):
-                                    for ip in result.get("inline_products"):
-                                        ip["rank"] = ip.get("position", "N/A")
-                                        products.append(ip)
-                                
-                                # 2. If still no products, convert top 5 organic results to product cards
-                                if not products and result.get("organic_results"):
-                                    for org_idx, org in enumerate(result.get("organic_results")[:5]):
-                                        products.append({
-                                            "title": org.get("title"),
-                                            "link": org.get("link"),
-                                            "price": "Check site",
-                                            "rank": org.get("position", org_idx + 1),
-                                            "thumbnail": org.get("thumbnail"),
-                                            "snippet": org.get("snippet")
-                                        })
-                            else:
-                                raise e
+                            products = data.get("products", [])
 
                         if not products:
                             st.markdown('<div class="status-box">No products found for this query.</div>', unsafe_allow_html=True)
@@ -1307,24 +1304,33 @@ with tab_amazon:
         
         with st.spinner(f"{status_msg}…"):
             try:
-                data = scrape_amazon_page(country_key, page_key, category_key)
-                products = data.get("products", [])
-                if not products:
-                    st.markdown('<div class="status-box">No products were returned from Amazon.</div>', unsafe_allow_html=True)
+                # Route through FastAPI backend
+                api_params = {"category": category_key} if category_key else {}
+                resp = _http.get(
+                    f"{_API_BASE}/amazon/{country_key}/{page_key}",
+                    params=api_params,
+                    timeout=60,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                if "error" in data:
+                    error_msg = data["error"]
+                    if "no amazon domain" in error_msg.lower():
+                        st.error(f"Unable to scrape as there is no amazon domain for {amazon_country_label} country")
+                    else:
+                        st.markdown(f'<div class="error-box">❌ {error_msg}</div>', unsafe_allow_html=True)
                 else:
-                    st.markdown(f'<div class="status-box">✅ {len(products)} product(s) scraped.</div>', unsafe_allow_html=True)
-                    st.session_state["amazon_products"] = products
-                    
-                    # Clear old summaries/enrichments
-                    keys_to_clear = [k for k in st.session_state.keys() if "amz" in k and k != "amazon_products"]
-                    for k in keys_to_clear:
-                        del st.session_state[k]
-            except ValueError as e:
-                error_msg = str(e)
-                if "no amazon domain" in error_msg.lower():
-                    st.error(f"Unable to scrape as there is no amazon domain for {amazon_country_label} country")
-                else:
-                    st.markdown(f'<div class="error-box">❌ {error_msg}</div>', unsafe_allow_html=True)
+                    products = data.get("products", [])
+                    if not products:
+                        st.markdown('<div class="status-box">No products were returned from Amazon.</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div class="status-box">✅ {len(products)} product(s) scraped.</div>', unsafe_allow_html=True)
+                        st.session_state["amazon_products"] = products
+                        # Clear old summaries/enrichments
+                        keys_to_clear = [k for k in st.session_state.keys() if "amz" in k and k != "amazon_products"]
+                        for k in keys_to_clear:
+                            del st.session_state[k]
             except Exception as e:
                 st.markdown(f'<div class="error-box">❌ Unable to retrieve Amazon products: {e}</div>', unsafe_allow_html=True)
 

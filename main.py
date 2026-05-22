@@ -1,33 +1,49 @@
-from datetime import date, timedelta
 import os
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-import serpapi
 from dotenv import load_dotenv
-
+import serpapi
 from amazon_scraper import scrape_amazon_page
-from gsc_client import get_search_queries, get_pages, get_cached_response, cache_response, get_gsc_service, list_verified_properties
-
-COUNTRY_CODES = {
-    "australia": "au",
-    "kuwait": "kw",
-    "united-kingdom": "uk",
-    "saudi-arabia": "sa",
-    "india": "in",
-}
 
 load_dotenv()
 
-GSC_PROPERTY_URLS = {
-    "australia": "https://u-buy.com.au",
-    "kuwait": "https://a.ubuy.com.kw",
-    "united-kingdom": "https://u-buy.co.uk",
-    "saudi-arabia": "https://ubuy.com.sa",
-    "india": "https://ubuy.co.in",
+# All 24 supported Google Shopping country codes
+COUNTRY_CODES = {
+    "au": "au",  # Australia
+    "be": "be",  # Belgium
+    "br": "br",  # Brazil
+    "ca": "ca",  # Canada
+    "cn": "cn",  # China
+    "eg": "eg",  # Egypt
+    "fr": "fr",  # France
+    "de": "de",  # Germany
+    "in": "in",  # India
+    "ie": "ie",  # Ireland
+    "it": "it",  # Italy
+    "jp": "jp",  # Japan
+    "mx": "mx",  # Mexico
+    "nl": "nl",  # Netherlands
+    "pl": "pl",  # Poland
+    "sa": "sa",  # Saudi Arabia
+    "sg": "sg",  # Singapore
+    "za": "za",  # South Africa
+    "es": "es",  # Spain
+    "se": "se",  # Sweden
+    "tr": "tr",  # Turkey
+    "ae": "ae",  # United Arab Emirates
+    "uk": "uk",  # United Kingdom
+    "us": "us",  # United States
+    "kw": "kw",  # Kuwait
 }
 
-app = FastAPI(title="Product Research Tool", description="API for product research using SERP API and GSC data")
+app = FastAPI(
+    title="Product Research Tool API",
+    description=(
+        "REST API powering the Product Research Tool Streamlit dashboard. "
+        "Provides Google Shopping search and Amazon product scraping across 24+ countries."
+    ),
+    version="1.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,94 +53,106 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health")
+
+# ── Health Check ──────────────────────────────────────────────────────────────
+
+@app.get("/health", tags=["System"])
 def health():
+    """Returns API status. Used by the Streamlit frontend to verify the backend is live."""
     return {"status": "ok"}
 
-@app.get("/search/{country}/{query}")
-def search_products(country: str, query: str):
+
+# ── Google Shopping Search ─────────────────────────────────────────────────────
+
+@app.get("/search/{gl}/{query:path}", tags=["Search"])
+def search_products(
+    gl: str,
+    query: str,
+    category: str = Query(None, description="Optional category prefix to prepend to the query"),
+):
+    """
+    Search Google Shopping for products.
+
+    - **gl**: 2-letter country/locale code (e.g. `in`, `us`, `uk`)
+    - **query**: Search term (URL-encoded, e.g. `wireless+earbuds`)
+    - **category**: Optional category string to prepend to query (e.g. `Electronics`)
+
+    Falls back to a standard Google organic search for locales where Shopping is unsupported.
+    """
     api_key = os.getenv("SERP_API_KEY")
     if not api_key:
-        return {"error": "SERP API key not configured"}
+        return {"error": "SERP_API_KEY is not configured on the server."}
 
-    gl = COUNTRY_CODES.get(country.lower())
-    if not gl:
-        return {"error": f"Unsupported country '{country}'. Supported: {', '.join(COUNTRY_CODES.keys())}"}
-    
+    if gl.lower() not in COUNTRY_CODES:
+        return {"error": f"Unsupported locale code '{gl}'. Supported: {', '.join(COUNTRY_CODES)}"}
+
+    full_query = f"{category} {query}".strip() if category else query
     params = {
         "engine": "google_shopping",
-        "q": query,
+        "q": full_query,
         "api_key": api_key,
-        "gl": gl,
+        "gl": gl.lower(),
     }
-    
+
+    fallback_used = False
     try:
-        search = serpapi.search(params)
-        results = search.as_dict()
-        shopping_results = results.get("shopping_results", [])
-        immersive_products = results.get("immersive_products", [])
-        return {
-            "country": country,
-            "query": query,
-            "shopping_results": shopping_results,
-            "immersive_products": immersive_products,
-        }
+        result = serpapi.search(params).as_dict()
+        products = result.get("shopping_results", []) + result.get("immersive_products", [])
+
+        # If Shopping returned nothing, attempt organic fallback silently
+        if not products:
+            raise Exception("No shopping results — attempt organic fallback")
+
     except Exception as e:
-        return {"error": str(e)}
+        # Fallback: organic search (works for all locales)
+        fallback_used = True
+        try:
+            params["engine"] = "google"
+            result = serpapi.search(params).as_dict()
+            products = (
+                result.get("shopping_results")
+                or result.get("inline_products")
+                or [
+                    {
+                        "title": org.get("title"),
+                        "link": org.get("link"),
+                        "price": "Check site",
+                        "rank": org.get("position"),
+                        "thumbnail": org.get("thumbnail"),
+                        "snippet": org.get("snippet"),
+                    }
+                    for org in result.get("organic_results", [])[:5]
+                ]
+            ) or []
+        except Exception as e2:
+            return {"error": str(e2)}
+
+    return {
+        "gl": gl,
+        "query": query,
+        "fallback_used": fallback_used,
+        "products": products,
+    }
 
 
-@app.get("/amazon/{country}/{page_type}")
-def amazon_scrape(country: str, page_type: str):
+# ── Amazon Scraper ─────────────────────────────────────────────────────────────
+
+@app.get("/amazon/{country}/{page_type}", tags=["Amazon"])
+def amazon_scrape(
+    country: str,
+    page_type: str,
+    category: str = Query(None, description="Amazon category slug (e.g. electronics, beauty)"),
+):
+    """
+    Scrape an Amazon listing page (Best Sellers / New Releases / Movers & Shakers).
+
+    - **country**: Country slug (e.g. `india`, `united-states`, `united-kingdom`)
+    - **page_type**: One of `best-sellers`, `new-releases`, `movers-and-shakers`
+    - **category**: Optional category slug to filter results (e.g. `electronics`)
+    """
     try:
-        return scrape_amazon_page(country, page_type)
+        return scrape_amazon_page(country, page_type, category)
     except ValueError as e:
         return {"error": str(e)}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@app.get("/gsc/queries/{country}")
-def gsc_queries(country: str, days: int = 30):
-    property_url = GSC_PROPERTY_URLS.get(country.lower())
-    if not property_url:
-        return {"error": f"GSC property URL not configured for country '{country}'. Supported: {', '.join(GSC_PROPERTY_URLS.keys())}"}
-
-    cache_key = f"queries_{country}_{days}"
-    cached = get_cached_response(cache_key)
-    if cached:
-        return {"cached": True, "data": cached}
-
-    try:
-        rows = get_search_queries(country, property_url, days)
-        cache_response(cache_key, rows)
-        return {"cached": False, "data": rows}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@app.get("/gsc/properties/{country}")
-def gsc_properties(country: str):
-    try:
-        props = list_verified_properties(country)
-        return {"country": country, "properties": props}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@app.get("/gsc/pages/{country}")
-def gsc_pages(country: str, days: int = 30):
-    property_url = GSC_PROPERTY_URLS.get(country.lower())
-    if not property_url:
-        return {"error": f"GSC property URL not configured for country '{country}'. Supported: {', '.join(GSC_PROPERTY_URLS.keys())}"}
-
-    cache_key = f"pages_{country}_{days}"
-    cached = get_cached_response(cache_key)
-    if cached:
-        return {"cached": True, "data": cached}
-
-    try:
-        rows = get_pages(country, property_url, days)
-        cache_response(cache_key, rows)
-        return {"cached": False, "data": rows}
     except Exception as e:
         return {"error": str(e)}
