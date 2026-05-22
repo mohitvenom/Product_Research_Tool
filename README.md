@@ -95,12 +95,11 @@ OPENAI_API_KEY=your_openai_key_here
 streamlit run app.py
 ```
 
-### 6. (Optional) Run the FastAPI backend
+### 6. API Documentation
 
-```bash
-uvicorn main:app --reload
-# API docs → http://127.0.0.1:8000/docs
-```
+The Streamlit app automatically starts the FastAPI backend on port `8001` in the background.
+Interactive API docs are available at: `http://127.0.0.1:8001/docs`
+
 
 ---
 
@@ -124,8 +123,6 @@ Open → **http://localhost:8501**
 | `GET` | `/health` | Health check |
 | `GET` | `/search/{country}/{query}` | Google Shopping search |
 | `GET` | `/amazon/{country}/{page_type}` | Scrape Amazon listings |
-| `GET` | `/gsc/queries/{country}?days=30` | Google Search Console queries |
-| `GET` | `/gsc/pages/{country}?days=30` | Google Search Console pages |
 
 **Supported `page_type` values:** `best-sellers` · `new-releases` · `movers-and-shakers`
 
@@ -135,7 +132,7 @@ GET /search/india/laptop
 GET /amazon/united-states/best-sellers
 ```
 
-Interactive API docs: `http://localhost:8000/docs`
+Interactive API docs: `http://localhost:8001/docs`
 
 ---
 
