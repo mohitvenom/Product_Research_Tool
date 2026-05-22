@@ -14,7 +14,12 @@ from openai import OpenAI
 
 from amazon_scraper import scrape_amazon_page
 from datetime import datetime, timedelta
-from amazon_deals import get_banner_deals, get_products_from_deal
+# Playwright is only available in local environments; gracefully degrade on Streamlit Cloud
+try:
+    from amazon_deals import get_banner_deals, get_products_from_deal
+    PLAYWRIGHT_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    PLAYWRIGHT_AVAILABLE = False
 
 load_dotenv()
 
@@ -1624,6 +1629,18 @@ def _run_products_scrape(
 
 with tab_deals:
     st.markdown("#### 🏷️ Amazon Deal Scraper")
+
+    if not PLAYWRIGHT_AVAILABLE:
+        st.warning(
+            "⚠️ **Amazon Deal Scraper is not available in this environment.**\n\n"
+            "This feature uses **Playwright** (a browser automation library) to scrape live deal banners "
+            "from Amazon. Playwright requires browser binaries that cannot run on Streamlit Community Cloud.\n\n"
+            "✅ **Run the app locally** to use this feature:\n"
+            "```\nstreamlit run app.py\n```",
+            icon="🖥️",
+        )
+        st.stop()
+
     st.markdown(
         "<p style='color:#9bb3c8;margin-bottom:20px;'>Scrape live deal banners from the Amazon homepage "
         "and pull all product listings from any featured deal page in real time.</p>",
