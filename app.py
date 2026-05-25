@@ -25,29 +25,52 @@ except (ImportError, ModuleNotFoundError):
 load_dotenv()
 
 # ── Background FastAPI Server ─────────────────────────────────────────────────
-# app.py starts main.py's FastAPI app in a background thread so the Streamlit
-# UI can route all data-fetching through the REST API on localhost:8001.
-import threading as _threading
+# We check if a FastAPI server is already running manually on port 8000 or 8001.
+# If yes, we use it directly so the developer can see live logs and reload features.
+# If no, we start a cached background FastAPI instance on port 8001 exactly once.
+
 _API_BASE = "http://127.0.0.1:8001"
-_fastapi_lock = _threading.Lock()
-_fastapi_started = False
 
-def _start_fastapi():
-    import uvicorn
-    from main import app as _fastapi_app
-    uvicorn.run(_fastapi_app, host="127.0.0.1", port=8001, log_level="error")
+def _is_api_alive(url: str) -> bool:
+    try:
+        resp = _http.get(f"{url}/health", timeout=0.5)
+        return resp.status_code == 200 and resp.json().get("status") == "ok"
+    except Exception:
+        return False
 
-def _ensure_fastapi():
-    global _fastapi_started
-    with _fastapi_lock:
-        if not _fastapi_started:
-            _fastapi_started = True
-            t = _threading.Thread(target=_start_fastapi, daemon=True)
-            t.start()
-            import time
-            time.sleep(1.0)  # Allow FastAPI time to boot
+@st.cache_resource
+def _start_fastapi_background():
+    import threading as _threading
+    def _run():
+        import uvicorn
+        from main import app as _fastapi_app
+        uvicorn.run(_fastapi_app, host="127.0.0.1", port=8001, log_level="error")
+    
+    t = _threading.Thread(target=_run, daemon=True)
+    t.start()
+    import time
+    time.sleep(1.0)  # Allow FastAPI time to boot
+    return t
 
-_ensure_fastapi()
+def _initialize_backend():
+    global _API_BASE
+    # 1. Check if user started a manual server on port 8000 (default uvicorn port)
+    if _is_api_alive("http://127.0.0.1:8000"):
+        _API_BASE = "http://127.0.0.1:8000"
+        return "Manual (Port 8000)"
+        
+    # 2. Check if a server is already active on port 8001
+    if _is_api_alive("http://127.0.0.1:8001"):
+        _API_BASE = "http://127.0.0.1:8001"
+        return "Existing (Port 8001)"
+        
+    # 3. Spin up background server and cache the thread
+    _start_fastapi_background()
+    _API_BASE = "http://127.0.0.1:8001"
+    return "Auto-Started (Port 8001)"
+
+_backend_status = _initialize_backend()
+
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
