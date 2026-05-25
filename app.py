@@ -1150,17 +1150,14 @@ def render_openai_card(p: dict, idx: int):
     escaped_title = urllib.parse.quote_plus(title)
     buy_link = f"{domain}/s?k={escaped_title}"
     
-    # Resolve category-based premium image with specific keyword intelligence
-    category = st.session_state.get("ai_category", "All Categories")
-    img_url = get_product_image(title, category)
-    img_html = f'<img src="{img_url}" class="product-img">'
+    # Resolve category-based premium image with specific keyword intelligence (Removed for AI Search)
+    img_html = ""
     
     # Styled buy link button matching the card design
     links_html = f'<a class="view-btn" href="{buy_link}" target="_blank" rel="noopener noreferrer" style="margin-top:14px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.30);color:#fbbf24 !important;text-align:center;display:block;">Check on Amazon →</a>'
 
     html = (
-        f'<div class="product-card">'
-        f'{img_html}'
+        f'<div class="product-card" style="height: auto; min-height: 250px;">'
         f'<div class="product-title">{title}</div>'
         f'<div style="color:#7dd3fc;font-size:0.85rem;margin-bottom:8px;">{p.get("brand","")}</div>'
         f'<div class="product-price">{p.get("price","N/A")}</div>'
