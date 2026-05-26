@@ -7,34 +7,12 @@ from amazon_scraper import scrape_amazon_page
 
 load_dotenv()
 
+import json
+with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as f:
+    _config = json.load(f)
+
 # All 24 supported Google Shopping country codes
-COUNTRY_CODES = {
-    "au": "au",  # Australia
-    "be": "be",  # Belgium
-    "br": "br",  # Brazil
-    "ca": "ca",  # Canada
-    "cn": "cn",  # China
-    "eg": "eg",  # Egypt
-    "fr": "fr",  # France
-    "de": "de",  # Germany
-    "in": "in",  # India
-    "ie": "ie",  # Ireland
-    "it": "it",  # Italy
-    "jp": "jp",  # Japan
-    "mx": "mx",  # Mexico
-    "nl": "nl",  # Netherlands
-    "pl": "pl",  # Poland
-    "sa": "sa",  # Saudi Arabia
-    "sg": "sg",  # Singapore
-    "za": "za",  # South Africa
-    "es": "es",  # Spain
-    "se": "se",  # Sweden
-    "tr": "tr",  # Turkey
-    "ae": "ae",  # United Arab Emirates
-    "uk": "uk",  # United Kingdom
-    "us": "us",  # United States
-    "kw": "kw",  # Kuwait
-}
+COUNTRY_CODES = _config.get("MAIN_COUNTRY_CODES", {})
 
 app = FastAPI(
     title="Product Research Tool API",

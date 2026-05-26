@@ -74,133 +74,18 @@ _backend_status = _initialize_backend()
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-COUNTRY_CODES = {
-    "Australia": "au",
-    "Belgium": "be",
-    "Brazil": "br",
-    "Canada": "ca",
-    "China": "cn",
-    "Egypt": "eg",
-    "France": "fr",
-    "Germany": "de",
-    "India": "in",
-    "Ireland": "ie",
-    "Italy": "it",
-    "Japan": "jp",
-    "Mexico": "mx",
-    "Netherlands": "nl",
-    "Poland": "pl",
-    "Saudi Arabia": "sa",
-    "Singapore": "sg",
-    "South Africa": "za",
-    "Spain": "es",
-    "Sweden": "se",
-    "Turkey": "tr",
-    "United Arab Emirates": "ae",
-    "United Kingdom": "uk",
-    "United States": "us",
-    "Kuwait": "kw",
-}
+import json
+import os
 
-AMAZON_COUNTRIES = {
-    "Australia": "australia",
-    "Belgium": "belgium",
-    "Brazil": "brazil",
-    "Canada": "canada",
-    "China": "china",
-    "Egypt": "egypt",
-    "France": "france",
-    "Germany": "germany",
-    "India": "india",
-    "Ireland": "ireland",
-    "Italy": "italy",
-    "Japan": "japan",
-    "Mexico": "mexico",
-    "Netherlands": "netherlands",
-    "Poland": "poland",
-    "Saudi Arabia": "saudi-arabia",
-    "Singapore": "singapore",
-    "South Africa": "south-africa",
-    "Spain": "spain",
-    "Sweden": "sweden",
-    "Turkey": "turkey",
-    "United Arab Emirates": "united-arab-emirates",
-    "United Kingdom": "united-kingdom",
-    "United States": "united-states",
-    "Kuwait": "kuwait",
-}
+with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as f:
+    _config = json.load(f)
 
-PAGE_TYPES = {
-    "Best Sellers": "best-sellers",
-    "New Releases": "new-releases",
-    "Movers & Shakers": "movers-and-shakers",
-}
-
-CATEGORIES = {
-    "All Categories": None,
-    "Health & Supplements": "hpc",
-    "Electronics": "electronics",
-    "Beauty & Personal Care": "beauty",
-    "Fashion": "fashion",
-    "Home & Kitchen": "home",
-    "Baby Essentials": "baby",
-    "Musical Instruments": "musical-instruments",
-    "Grocery & Gourmet Food": "grocery",
-    "Office Supplies": "office-products",
-    "Sports Outdoor & Fitness": "sports",
-    "Automotive": "automotive",
-    "Household Supplies": "hpc",
-    "Pet Supplies": "pet-supplies",
-    "Arts Crafts & Sewing": "arts-crafts",
-    "Toys & Games": "toys",
-    "Industrial Supplies": "industrial",
-    "Books": "books",
-    "Gardening Supplies": "lawn-garden",
-}
-
-SITE_CATEGORIES = {
-    "All Categories": None,
-    "Health & Supplements": "health",
-    "Electronics": "electronics",
-    "Beauty & Personal Care": "beauty",
-    "Fashion": "fashion",
-    "Home & Kitchen": "home",
-    "Baby Essentials": "baby",
-    "Musical Instruments": "musical",
-    "Grocery & Gourmet Food": "grocery",
-    "Office Supplies": "office",
-    "Sports Outdoor & Fitness": "sports",
-    "Automotive": "automotive",
-    "Household Supplies": "household",
-    "Pet Supplies": "pet",
-    "Arts Crafts & Sewing": "arts",
-    "Toys & Games": "toys",
-    "Industrial Supplies": "industrial",
-    "Books": "books",
-    "Gardening Supplies": "gardening",
-}
-
-CATEGORY_IMAGES = {
-    "All Categories": "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop",
-    "Health & Supplements": "https://images.unsplash.com/photo-1579758629938-03607ccdbaba?w=500&auto=format&fit=crop",
-    "Electronics": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&auto=format&fit=crop",
-    "Beauty & Personal Care": "https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=500&auto=format&fit=crop",
-    "Fashion": "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=500&auto=format&fit=crop",
-    "Home & Kitchen": "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=500&auto=format&fit=crop",
-    "Baby Essentials": "https://images.unsplash.com/photo-1515488042361-404e9250afef?w=500&auto=format&fit=crop",
-    "Musical Instruments": "https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=500&auto=format&fit=crop",
-    "Grocery & Gourmet Food": "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop",
-    "Office Supplies": "https://images.unsplash.com/photo-1513151233558-d860c5398176?w=500&auto=format&fit=crop",
-    "Sports Outdoor & Fitness": "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop",
-    "Automotive": "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500&auto=format&fit=crop",
-    "Household Supplies": "https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=500&auto=format&fit=crop",
-    "Pet Supplies": "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=500&auto=format&fit=crop",
-    "Arts Crafts & Sewing": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=500&auto=format&fit=crop",
-    "Toys & Games": "https://images.unsplash.com/photo-1539627831859-a911cf04b3cd?w=500&auto=format&fit=crop",
-    "Industrial Supplies": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=500&auto=format&fit=crop",
-    "Books": "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500&auto=format&fit=crop",
-    "Gardening Supplies": "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=500&auto=format&fit=crop",
-}
+COUNTRY_CODES = _config.get("COUNTRY_CODES", {})
+AMAZON_COUNTRIES = _config.get("AMAZON_COUNTRIES", {})
+PAGE_TYPES = _config.get("PAGE_TYPES", {})
+CATEGORIES = _config.get("CATEGORIES", {})
+SITE_CATEGORIES = _config.get("SITE_CATEGORIES", {})
+CATEGORY_IMAGES = _config.get("CATEGORY_IMAGES", {})
 
 def get_product_image(title: str, category: str) -> str:
     """Choose a highly specific product stock image based on keywords in title with category fallback."""

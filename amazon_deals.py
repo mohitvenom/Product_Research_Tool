@@ -578,7 +578,7 @@ async def get_banner_deals(zip_code="41018"):
                     
                     deals[title] = link
 
-        print("\n=== LIVE HERO BANNER DEALS (Zip: 41018) ===")
+        print(f"\n=== LIVE HERO BANNER DEALS (Zip: {zip_code}) ===")
         deals_list = list(deals.items())
         for i, (deal, link) in enumerate(deals_list, 1):
             print(f"{i}. {deal}")
@@ -674,4 +674,8 @@ async def get_banner_deals(zip_code="41018"):
         await browser.close()
 
 if __name__ == "__main__":
-    asyncio.run(get_banner_deals())
+    import sys
+    zip_arg = "41018"
+    if len(sys.argv) > 2:
+        zip_arg = sys.argv[2].strip()
+    asyncio.run(get_banner_deals(zip_arg))

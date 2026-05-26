@@ -2,58 +2,16 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-AMAZON_DOMAINS = {
-    "australia": "https://www.amazon.com.au",
-    "belgium": "https://www.amazon.com.be",
-    "brazil": "https://www.amazon.com.br",
-    "canada": "https://www.amazon.ca",
-    "china": "https://www.amazon.cn",
-    "egypt": "https://www.amazon.eg",
-    "france": "https://www.amazon.fr",
-    "germany": "https://www.amazon.de",
-    "india": "https://www.amazon.in",
-    "italy": "https://www.amazon.it",
-    "japan": "https://www.amazon.co.jp",
-    "mexico": "https://www.amazon.com.mx",
-    "netherlands": "https://www.amazon.nl",
-    "poland": "https://www.amazon.pl",
-    "saudi-arabia": "https://www.amazon.sa",
-    "singapore": "https://www.amazon.sg",
-    "spain": "https://www.amazon.es",
-    "sweden": "https://www.amazon.se",
-    "turkey": "https://www.amazon.com.tr",
-    "united-arab-emirates": "https://www.amazon.ae",
-    "united-kingdom": "https://www.amazon.co.uk",
-    "united-states": "https://www.amazon.com",
-    "south-africa": "https://www.amazon.co.za",
-    "ireland": "https://www.amazon.ie",
-}
+import json
+import os
 
-PAGE_PATHS = {
-    "best-sellers": "/gp/bestsellers",
-    "new-releases": "/gp/new-releases",
-    "movers-and-shakers": "/gp/movers-and-shakers",
-}
+with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as f:
+    _config = json.load(f)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Encoding": "gzip, deflate",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Pragma": "no-cache",
-    "Cache-Control": "no-cache",
-}
-
-COUNTRY_LANGUAGE = {
-    "australia": "en-AU,en;q=0.9",
-    "kuwait": "en-AE,en;q=0.9",
-    "united-kingdom": "en-GB,en;q=0.9",
-    "saudi-arabia": "en-SA,en;q=0.9",
-    "india": "en-IN,en;q=0.9",
-    "south-africa": "en-ZA,en;q=0.9",
-    "ireland": "en-IE,en;q=0.9",
-}
+AMAZON_DOMAINS = _config.get("AMAZON_DOMAINS", {})
+PAGE_PATHS = _config.get("PAGE_PATHS", {})
+HEADERS = _config.get("HEADERS", {})
+COUNTRY_LANGUAGE = _config.get("COUNTRY_LANGUAGE", {})
 
 
 def _clean_text(tag):
