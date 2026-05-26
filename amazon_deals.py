@@ -586,42 +586,56 @@ async def get_banner_deals(zip_code="41018"):
         # Check for command line argument or automatically scrape all deals
         import sys
         target_indices = []
+        is_auto_run = False
         if len(sys.argv) > 1:
             arg = sys.argv[1].strip().lower()
             if arg == "all":
                 target_indices = list(range(len(deals_list)))
+                is_auto_run = True
             else:
                 try:
                     idx = int(arg) - 1
                     if 0 <= idx < len(deals_list):
                         target_indices = [idx]
+                        is_auto_run = True
                     else:
                         print(f"[-] Invalid deal number arg. Scraping all deals.")
                         target_indices = list(range(len(deals_list)))
+                        is_auto_run = True
                 except ValueError:
                     print(f"[-] Invalid arg '{arg}'. Scraping all deals.")
                     target_indices = list(range(len(deals_list)))
+                    is_auto_run = True
         else:
             # Default to scraping all deals automatically so the user never has to input anything!
             print("\n   [Auto-Run] Scraping all deals automatically...")
             target_indices = list(range(len(deals_list)))
+            is_auto_run = True
 
         for idx in target_indices:
             deal_title, deal_link = deals_list[idx]
             print("\n" + "="*60)
-            user_choice = await asyncio.to_thread(
-                input, "Enter the deal number to scrape products (or 'q' to quit): "
-            )
-            user_choice = user_choice.strip().lower()
             
-            if user_choice in ["q", "quit", "exit"]:
-                print("\nExiting and closing browser. Goodbye!")
-                break
+            if is_auto_run:
+                choice_idx = idx
+                custom_selector = None
+                wait_time = 5
+            else:
+                user_choice = await asyncio.to_thread(
+                    input, "Enter the deal number to scrape products (or 'q' to quit): "
+                )
+                user_choice = user_choice.strip().lower()
                 
-            try:
-                choice_idx = int(user_choice) - 1
-                if 0 <= choice_idx < len(deals_list):
-                    selected_deal, selected_link = deals_list[choice_idx]
+                if user_choice in ["q", "quit", "exit"]:
+                    print("\nExiting and closing browser. Goodbye!")
+                    break
+                    
+                try:
+                    choice_idx = int(user_choice) - 1
+                    if not (0 <= choice_idx < len(deals_list)):
+                        print(f"[-] Invalid choice! Please enter a number between 1 and {len(deals_list)}.")
+                        continue
+                        
                     custom_selector = await asyncio.to_thread(
                         input, "Enter custom CSS selector/class (optional, e.g. '.a-cardui', or press Enter for default): "
                     )
@@ -638,24 +652,24 @@ async def get_banner_deals(zip_code="41018"):
                             wait_time = int(wait_time_str.strip())
                         except ValueError:
                             print("   [Warning] Invalid wait time entered. Using default of 5 seconds.")
-                            
-                    if selected_link:
-                        # Scrape products from this deal link with scrolling
-                        products = await get_products_from_deal(page, selected_link, custom_selector, scroll_wait_time=wait_time)
-                        if products:
-                            print(f"\n[+] Scraped {len(products)} products in '{selected_deal}':")
-                            for j, prod in enumerate(products, 1):
-                                print(f"  {j}. {prod['title']}")
-                                print(f"     Price: {prod['price']}")
-                                print(f"     URL: {prod['link']}\n")
-                        else:
-                            print("\n[-] No products found inside this deal link.")
-                    else:
-                        print("\n[-] No link available for this deal.")
+                except ValueError:
+                    print("[-] Invalid input! Please enter a number or 'q'.")
+                    continue
+                    
+            selected_deal, selected_link = deals_list[choice_idx]
+            if selected_link:
+                # Scrape products from this deal link with scrolling
+                products = await get_products_from_deal(page, selected_link, custom_selector, scroll_wait_time=wait_time)
+                if products:
+                    print(f"\n[+] Scraped {len(products)} products in '{selected_deal}':")
+                    for j, prod in enumerate(products, 1):
+                        print(f"  {j}. {prod['title']}")
+                        print(f"     Price: {prod['price']}")
+                        print(f"     URL: {prod['link']}\n")
                 else:
-                    print(f"[-] Invalid choice! Please enter a number between 1 and {len(deals_list)}.")
-            except ValueError:
-                print("[-] Invalid input! Please enter a number or 'q'.")
+                    print("\n[-] No products found inside this deal link.")
+            else:
+                print("\n[-] No link available for this deal.")
 
         await browser.close()
 

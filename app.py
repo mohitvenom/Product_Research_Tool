@@ -11,7 +11,7 @@ import pandas as pd
 from dotenv import load_dotenv
 import requests as _http
 import urllib.parse as _urllib_parse
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 
 from amazon_scraper import AMAZON_DOMAINS
 from datetime import datetime, timedelta
@@ -764,6 +764,70 @@ def get_openai_client():
     return OpenAI(api_key=api_key)
 
 
+@st.cache_resource
+def get_async_openai_client():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    return AsyncOpenAI(api_key=api_key)
+
+
+async def async_crisp_name(title: str, client: AsyncOpenAI) -> str:
+    """Use OpenAI asynchronously to shorten a product name."""
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a product naming expert. Your job is to shorten messy, "
+                        "long product titles from e-commerce sites into a clean, concise name "
+                        "that keeps ALL important information (brand, key specs, size, model). "
+                        "Remove only filler words, repetition, and marketing fluff. "
+                        "Return ONLY the shortened name, nothing else."
+                    ),
+                },
+                {"role": "user", "content": f"Shorten this product name:\n{title}"},
+            ],
+            max_tokens=80,
+            temperature=0.2,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception:
+        return title
+
+
+async def async_enrich_product(title: str, link: str, client: AsyncOpenAI) -> dict:
+    """Ask OpenAI asynchronously to fill in missing product details."""
+    prompt = (
+        f"A product is listed on an e-commerce site with the following details:\n"
+        f"Title: {title}\n"
+        f"Product URL: {link}\n\n"
+        f"Based on your knowledge of this product and similar products, provide:\n"
+        f"1. An estimated customer rating (out of 5, e.g. 4.3)\n"
+        f"2. An approximate number of customer reviews (e.g. 1,240)\n"
+        f"3. A brief 1-sentence product description (max 20 words)\n\n"
+        f"Return ONLY a valid JSON object with exactly these keys: rating, reviews, description.\n"
+        f"No extra text or markdown fences."
+    )
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
+            temperature=0.3,
+        )
+        raw = resp.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
 def crisp_name(title: str) -> str:
     """Use OpenAI to shorten a product name without losing key info."""
     client = get_openai_client()
@@ -1002,28 +1066,49 @@ def render_action_bar(products: list, source_key: str):
 
     # Process actions outside columns to prevent layout bugs during spinner execution
     if crisp_clicked:
-        with st.spinner("Shortening all product names…"):
-            for i, p in enumerate(products):
-                title = p.get('title') or p.get('position_text') or ''
-                if title:
-                    crisp_state_key = f"crisp_result_{source_key}_{i}"
-                    if crisp_state_key not in st.session_state:
-                        st.session_state[crisp_state_key] = crisp_name(title)
+        with st.spinner("Shortening all product names concurrently…"):
+            async_client = get_async_openai_client()
+            if async_client:
+                async def run_crisp_all():
+                    tasks = []
+                    keys = []
+                    for i, p in enumerate(products):
+                        title = p.get('title') or p.get('position_text') or ''
+                        if title:
+                            crisp_state_key = f"crisp_result_{source_key}_{i}"
+                            if crisp_state_key not in st.session_state:
+                                tasks.append(async_crisp_name(title, async_client))
+                                keys.append(crisp_state_key)
+                    if tasks:
+                        results = await asyncio.gather(*tasks)
+                        for k, res in zip(keys, results):
+                            st.session_state[k] = res
+                asyncio.run(run_crisp_all())
         st.rerun()
 
     if enrich_clicked:
-        with st.spinner("Enriching products..."):
-            for i, p in enumerate(products):
-                rating = p.get('rating') or p.get('star_rating') or "N/A"
-                reviews = p.get('reviews') or p.get('review_count') or "N/A"
-                link = p.get('product_link') or p.get('link') or p.get('source') or "#"
-                
-                if (not rating or rating == "N/A" or not reviews or reviews == "N/A") and link and link != "#":
-                    enrich_state_key = f"enrich_result_{source_key}_{i}"
-                    if enrich_state_key not in st.session_state:
-                        data = enrich_product(p.get('title', ''), link)
-                        if data:
-                            st.session_state[enrich_state_key] = data
+        with st.spinner("Enriching products concurrently..."):
+            async_client = get_async_openai_client()
+            if async_client:
+                async def run_enrich_all():
+                    tasks = []
+                    keys = []
+                    for i, p in enumerate(products):
+                        rating = p.get('rating') or p.get('star_rating') or "N/A"
+                        reviews = p.get('reviews') or p.get('review_count') or "N/A"
+                        link = p.get('product_link') or p.get('link') or p.get('source') or "#"
+                        
+                        if (not rating or rating == "N/A" or not reviews or reviews == "N/A") and link and link != "#":
+                            enrich_state_key = f"enrich_result_{source_key}_{i}"
+                            if enrich_state_key not in st.session_state:
+                                tasks.append(async_enrich_product(p.get('title', ''), link, async_client))
+                                keys.append(enrich_state_key)
+                    if tasks:
+                        results = await asyncio.gather(*tasks)
+                        for k, res in zip(keys, results):
+                            if res:
+                                st.session_state[k] = res
+                asyncio.run(run_enrich_all())
         st.rerun()
 
     if summary_clicked:
