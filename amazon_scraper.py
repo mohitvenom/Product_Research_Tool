@@ -44,22 +44,27 @@ def _is_blocked_html(html: str) -> bool:
 
 
 def _fetch_html(url: str, country: str) -> str:
-    attempts = []
     country_lower = country.lower()
 
-    base_headers = HEADERS.copy()
-    if country_lower in COUNTRY_LANGUAGE:
-        base_headers["Accept-Language"] = COUNTRY_LANGUAGE[country_lower]
+    # Always request English first — COUNTRY_LANGUAGE now always has en-US/en-GB as the top priority
+    english_lang = COUNTRY_LANGUAGE.get(country_lower, "en-US,en;q=0.9")
 
-    attempts.append(base_headers)
+    attempts = []
 
+    # Attempt 1: English-first language header (primary)
+    primary_headers = HEADERS.copy()
+    primary_headers["Accept-Language"] = english_lang
+    attempts.append(primary_headers)
+
+    # Attempt 2: Pure en-US fallback with referer
     fallback_headers = HEADERS.copy()
     fallback_headers["Accept-Language"] = "en-US,en;q=0.9"
     fallback_headers["Referer"] = url
     attempts.append(fallback_headers)
 
+    # Attempt 3: Pure en-US with Google referer
     alt_headers = HEADERS.copy()
-    alt_headers["Accept-Language"] = COUNTRY_LANGUAGE.get(country_lower, "en-US,en;q=0.9")
+    alt_headers["Accept-Language"] = "en-US,en;q=0.9"
     alt_headers["Referer"] = "https://www.google.com/"
     attempts.append(alt_headers)
 

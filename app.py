@@ -846,7 +846,7 @@ def openai_product_search(query: str, country: str, num_results: int = 10) -> li
         f"(in local currency), key features (2-3 bullet points), estimated rating (out of 5), "
         f"and approximate number of reviews. Return ONLY a valid JSON array with objects having "
         f"these exact keys: title, brand, price, features (array of strings), rating, reviews. "
-        f"No extra text or markdown."
+        f"No extra text or markdown. Always respond in English only regardless of the country."
     )
     try:
         resp = client.chat.completions.create(

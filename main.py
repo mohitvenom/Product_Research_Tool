@@ -70,6 +70,7 @@ def search_products(
         "q": full_query,
         "api_key": api_key,
         "gl": gl.lower(),
+        "hl": "en",  # Force results in English regardless of country
     }
 
     fallback_used = False
